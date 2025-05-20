@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 from typing import Any, Literal
 
 from langchain.chat_models import init_chat_model
@@ -9,13 +10,16 @@ from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.pregel import RetryPolicy
+from langgraph.store.base import BaseStore
 from langgraph.types import Command
+from langgraph_sdk import get_client
 from pydantic import BaseModel
 
 from src.agent.config import Configuration
 from src.agent.enums import InvocationTags
 from src.agent.mcp_client import get_tools
 from src.agent.state import InputState, OutputState, State
+from src.agent.utils import format_memories
 from src.tools import agent_tool_kit
 
 
@@ -34,8 +38,20 @@ async def init_node(
     )
 
 
-async def chat_bot(state: State, config: RunnableConfig) -> dict:
+async def chat_bot(state: State, config: RunnableConfig, store: BaseStore) -> dict:
     configuration = Configuration.from_runnable_config(config)
+    namespace = (
+        "memories",
+        configuration.user_id,
+    )
+
+    query = "\n".join(
+        str(message.content)
+        for message in state.messages[-configuration.n_msgs_search :]
+    )
+    items = await store.asearch(
+        namespace, query=query, limit=configuration.memories_limit
+    )
 
     llm = init_chat_model(
         model=configuration.model,
@@ -46,7 +62,10 @@ async def chat_bot(state: State, config: RunnableConfig) -> dict:
     mcp_tools = await get_tools()
     llm_with_tools = llm.bind_tools(agent_tool_kit + mcp_tools)
 
-    sys = configuration.system_prompt
+    sys = configuration.system_prompt.format(
+        user_info=format_memories(items),
+        time=datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S"),
+    )
     max_tokens = configuration.max_tokens
 
     msgs = trim_messages(
@@ -70,7 +89,7 @@ async def chat_bot(state: State, config: RunnableConfig) -> dict:
 def tools_condition(
     state: list[AnyMessage] | dict[str, Any] | BaseModel,
     messages_key: str = "messages",
-) -> Literal["tools", "output_node"]:
+) -> Literal["tools", "schedule_memories"]:
     if isinstance(state, list):
         ai_message = state[-1]
     elif isinstance(state, dict) and (messages := state.get(messages_key, [])):
@@ -81,7 +100,7 @@ def tools_condition(
         raise ValueError(f"No messages found in input state to tool_edge: {state}")
     if hasattr(ai_message, "tool_calls") and len(ai_message.tool_calls) > 0:
         return "tools"
-    return "output_node"
+    return "schedule_memories"
 
 
 async def output_node(state: State, config: RunnableConfig) -> dict:
@@ -91,6 +110,40 @@ async def output_node(state: State, config: RunnableConfig) -> dict:
     or sending them to a different service.
     """
     return {"message": state.messages[-1]}
+
+
+async def schedule_memories(state: State, config: RunnableConfig) -> None:
+    """Prompt the bot to respond to the user, incorporating memories (if provided)."""
+    configurable = Configuration.from_runnable_config(config)
+    memory_client = get_client()
+    await memory_client.runs.create(
+        # We enqueue the memory formation process on the same thread.
+        # This means that IF this thread doesn't receive more messages before `after_seconds`,
+        # it will read from the shared state and extract memories for us.
+        # If a new request comes in for this thread before the scheduled run is executed,
+        # that run will be canceled, and a **new** one will be scheduled once
+        # this node is executed again.
+        thread_id=config["configurable"]["thread_id"],
+        # This memory-formation run will be enqueued and run later
+        # If a new run comes in before it is scheduled, it will be cancelled,
+        # then when this node is executed again, a *new* run will be scheduled
+        multitask_strategy="enqueue",
+        # This lets us "debounce" repeated requests to the memory graph
+        # if the user is actively engaging in a conversation. This saves us $$ and
+        # can help reduce the occurrence of duplicate memories.
+        after_seconds=configurable.delay_seconds,
+        # Specify the graph and/or graph configuration to handle the memory processing
+        assistant_id=configurable.mem_assistant_id,
+        input={"messages": state.messages},
+        config={
+            "configurable": {
+                # Ensure the memory service knows where to save the extracted memories
+                "user_id": configurable.user_id,
+                "memory_types": configurable.memory_types,
+                "model": f"{configurable.model_provider}:{configurable.model}",
+            },
+        },
+    )
 
 
 def create_graph() -> CompiledStateGraph:
@@ -113,15 +166,17 @@ def create_graph() -> CompiledStateGraph:
             messages_key="messages",
         ),
     )
+    graph_builder.add_node("schedule_memories", schedule_memories, retry=RetryPolicy())
     graph_builder.add_node("output_node", output_node, retry=RetryPolicy())
 
     # add edges
     graph_builder.add_conditional_edges(
         "chat_bot",
         tools_condition,
-        {"tools": "tools", "output_node": "output_node"},
+        {"tools": "tools", "schedule_memories": "schedule_memories"},
     )
     graph_builder.add_edge("tools", "chat_bot")
+    graph_builder.add_edge("schedule_memories", "output_node")
     graph_builder.add_edge("output_node", "__end__")
 
     # set entry point

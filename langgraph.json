@@ -1,9 +1,17 @@
 {
     "dockerfile_lines": [],
     "graphs": {
-        "agent": "./src/agent/__init__.py:graph"
+        "agent": "./src/agent/__init__.py:graph",
+        "memory": "./src/memory/graph.py:graph"
     },
     "env": ".env",
     "python_version": "3.13",
-    "dependencies": ["."]
+    "dependencies": ["."],
+    "store": {
+        "ttl": {"default_ttl": 1, "refresh_on_read": false, "sweep_interval_minutes": 1},
+        "index": {
+            "embed": "./src/embeddings/model.py:aembed_texts",
+            "dims": 512
+        }
+    }
 }
