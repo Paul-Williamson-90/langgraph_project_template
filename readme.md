@@ -3,7 +3,7 @@ A project template for starting a LangGraph Agent repo.
 
 # Setup
 1. Create a .env file in the root with the following keys:
-```.env
+```bash
 LANGSMITH_API_KEY=...
 OPENAI_API_KEY=...
 
@@ -48,7 +48,7 @@ LangGraph has an SDK for interfacing with a LangGraph Agent endpoint:
 
 For example:
 
-```
+```python
 from langgraph_sdk import get_client
 
 client = get_client(url=..., api_key=...)
