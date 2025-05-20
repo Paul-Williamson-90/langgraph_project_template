@@ -1,16 +1,11 @@
+import json
+
 from langchain_mcp_adapters.client import (  # type: ignore[import-untyped]
     MultiServerMCPClient,
 )
 
-client = MultiServerMCPClient(
-    {
-        "math": {
-            "command": "python",
-            "args": ["src/mcp_server/tools.py"],
-            "transport": "stdio",
-        },
-    }
-)
+servers = json.load(open("./mcp_config.json", "r"))
+client = MultiServerMCPClient(servers)
 
 
 async def get_tools():

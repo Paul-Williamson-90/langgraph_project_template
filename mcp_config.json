@@ -1,0 +1,7 @@
+{
+    "math": {
+        "command": "python",
+        "args": ["src/mcp_server/tools.py"],
+        "transport": "stdio"
+    }
+}
