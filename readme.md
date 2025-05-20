@@ -1,5 +1,5 @@
-# LangGraph Project Template Setup
-A project template for starting a LangGraph Agent repo.
+# LangGraph Project Template Setup (w/ Memory)
+A project template for starting a LangGraph Agent repo. This variation of the template has long-term memory storage and retrieval for the agent via Postgres and PG Vector.
 
 # Setup
 1. Create a .env file in the root with the following keys:
@@ -73,3 +73,6 @@ All MCP server connections are configured via the mcp_config.json in the root of
 By default there is the example local server setup that has been provided (src/mcp_servers/tools.py) using a stdio transport configuration.
 
 You can also add additional remote servers via sse transport configurations.
+
+# Memory
+To configure the types of memories which are saved modify the config at src/memory/config.py
