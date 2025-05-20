@@ -58,3 +58,18 @@ await client.assistants.search()
 ## Additional Information Regarding Deployment
 - [Standalone Container Guidance](https://langchain-ai.github.io/langgraph/concepts/deployment_options/#standalone-container)
 - [Conceptual Guide](https://langchain-ai.github.io/langgraph/concepts/langgraph_standalone_container/)
+
+
+# Tools
+The project template has been setup to allow both standard LangChain tools (BaseTool) and MCP-server enabled tools.
+There are examples of both in the project template.
+
+## Standard Tools
+- See: src/tools/\_\_init\_\_.py
+- Adding tools to the agent_tool_kit list will extend the tools available to the agent.
+
+## MCP Tools
+All MCP server connections are configured via the mcp_config.json in the root of the project directory.
+By default there is the example local server setup that has been provided (src/mcp_servers/tools.py) using a stdio transport configuration.
+
+You can also add additional remote servers via sse transport configurations.
