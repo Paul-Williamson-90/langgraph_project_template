@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Literal
 
 from langchain.chat_models import init_chat_model
@@ -13,6 +14,7 @@ from pydantic import BaseModel
 
 from src.agent.config import Configuration
 from src.agent.enums import InvocationTags
+from src.agent.mcp_client import get_tools
 from src.agent.state import InputState, OutputState, State
 from src.tools import agent_tool_kit
 
@@ -41,7 +43,8 @@ async def chat_bot(state: State, config: RunnableConfig) -> dict:
         tags=[InvocationTags.MODEL_CALL.value],
     )
 
-    llm_with_tools = llm.bind_tools(agent_tool_kit)
+    mcp_tools = await get_tools()
+    llm_with_tools = llm.bind_tools(agent_tool_kit + mcp_tools)
 
     sys = configuration.system_prompt
     max_tokens = configuration.max_tokens
@@ -96,12 +99,15 @@ def create_graph() -> CompiledStateGraph:
         State, input=InputState, output=OutputState, config_schema=Configuration
     )
 
+    # get mcp tools
+    mcp_tools = asyncio.run(get_tools())
+
     # add nodes
     graph_builder.add_node("init_node", init_node, retry=RetryPolicy())
     graph_builder.add_node("chat_bot", chat_bot, retry=RetryPolicy())
     graph_builder.add_node(
         ToolNode(
-            agent_tool_kit,
+            agent_tool_kit + mcp_tools,
             tags=[InvocationTags.TOOL_CALLS.value],
             name="tools",
             messages_key="messages",
@@ -125,8 +131,3 @@ def create_graph() -> CompiledStateGraph:
     graph = graph_builder.compile()
 
     return graph
-
-
-graph = create_graph()
-
-__all__ = ["graph"]
