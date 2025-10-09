@@ -8,8 +8,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
-from langgraph.pregel import RetryPolicy
-from langgraph.types import Command
+from langgraph.types import Command, RetryPolicy
 from pydantic import BaseModel
 
 from src.agent.config import Configuration
